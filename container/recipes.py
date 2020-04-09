@@ -16,8 +16,8 @@ class BuildRecipes:
     # tag = 'cmake-{cmake_version}-gcc-{gcc_version}-fftw-{fftw_version}-{mpi}'
     stages = {}
     # _os_packages
-    _os_packages = ['vim',
-                    'wget', ]
+    # _os_packages = ['vim',
+    #                 'wget', ]
     # python packages
 
     def __init__(self, *, cli):
@@ -43,10 +43,10 @@ class BuildRecipes:
 
         self.stages['build'] += baseimage(image=self.base_image, _as='build')
 
-        # ospackages
-        self.stages['build'] += hpccm.building_blocks.packages(os_packages=self._os_packages)
         # python
         self.stages['build'] += hpccm.building_blocks.python()
+        # scif
+        self.stages['build'] += hpccm.building_blocks.pip(packages=['scif'])
 
         # cmake
         self.__add_cmake(stage='build')
@@ -118,12 +118,13 @@ class GromacsRecipes(BuildRecipes):
 
     directory = 'gromacs-{version}'
     build_directory = 'build.{simd}'
-    prefix = '/usr/local/gromacs'
+    # prefix = '/usr/local/gromacs-{simd}'
+    prefix = '/scif/apps/gromacs-{simd}'
     build_environment = {}
     url = 'ftp://ftp.gromacs.org/pub/gromacs/gromacs-{version}.tar.gz'
     cmake_opts = "\
-    -DCMAKE_INSTALL_BINDIR=bin.$simd$ \
-    -DCMAKE_INSTALL_LIBDIR=lib.$simd$ \
+    -DCMAKE_INSTALL_BINDIR=bin \
+    -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_C_COMPILER=$c_compiler$ \
     -DCMAKE_CXX_COMPILER=$cxx_compiler$ \
     -DGMX_OPENMP=ON \
@@ -146,7 +147,7 @@ class GromacsRecipes(BuildRecipes):
         # initiate build stage
         self.__initiate_build_stage()
         # Runtime stage
-        self.__runtime_stage(build_stage='build')
+        self.__deployment_stage(build_stage='build')
         # Generate Container Recipes
         self.__generate()
 
@@ -163,22 +164,32 @@ class GromacsRecipes(BuildRecipes):
                 value = engine[key] if key == 'simd' else engine[key].upper()
                 engine_cmake_opts = engine_cmake_opts.replace('$' + key + '$', value)
 
-            self.stages['build'] += hpccm.building_blocks.generic_cmake(cmake_opts=engine_cmake_opts.split(),
-                                                                        directory=self.directory.format(version=self.cli.args.gromacs),
-                                                                        build_directory=self.build_directory.format(simd=engine['simd']),
-                                                                        prefix=self.prefix,
-                                                                        build_environment=self.build_environment,
-                                                                        url=self.url.format(version=self.cli.args.gromacs))
+            # bin_suffix, libs suffix
 
-    def __runtime_stage(self, *, build_stage):
-        self.stages['runtime'] = hpccm.Stage()
-        self.stages['runtime'] += baseimage(image=self.base_image)
-        self.stages['runtime'] += self.stages[build_stage].runtime()
+            # scif
+            gromacs = hpccm.building_blocks.scif(name='gromacs-{simd}'.format(simd=engine['simd']))
+            gromacs += hpccm.primitives.comment('GROMACS-{version} installation with SIMD: {simd}'.format(version=self.cli.args.gromacs, simd=engine['simd']))
+
+            gromacs += hpccm.building_blocks.generic_cmake(cmake_opts=engine_cmake_opts.split(),
+                                                           directory=self.directory.format(version=self.cli.args.gromacs),
+                                                           build_directory=self.build_directory.format(simd=engine['simd']),
+                                                           prefix=self.prefix.format(simd=engine['simd']),
+                                                           build_environment=self.build_environment,
+                                                           url=self.url.format(version=self.cli.args.gromacs))
+
+            gromacs += hpccm.primitives.label(metadata={'SIMD': engine['simd']})
+
+            self.stages['build'] += gromacs
+
+    def __deployment_stage(self, *, build_stage):
+        self.stages['deploy'] = hpccm.Stage()
+        self.stages['deploy'] += baseimage(image=self.base_image)
+        self.stages['deploy'] += self.stages[build_stage].runtime()
 
         for engine in self.cli.gromacs_engines:
-            self.stages['runtime'] += hpccm.primitives.environment(variables={'PATH': '$PATH:/usr/local/gromacs/bin.{simd}'.format(simd=engine['simd'])})
+            self.stages['deploy'] += hpccm.primitives.environment(variables={'PATH': '$PATH:/usr/local/gromacs/bin.{simd}'.format(simd=engine['simd'])})
 
-        self.stages['runtime'] += hpccm.primitives.label(metadata={'gromacs.version': self.cli.args.gromacs})
+        self.stages['deploy'] += hpccm.primitives.label(metadata={'gromacs.version': self.cli.args.gromacs})
 
     def __get_cmake_opts(self):
         engine_cmake_opts = self.cmake_opts[:]
@@ -206,11 +217,9 @@ class GromacsRecipes(BuildRecipes):
             else:
                 engine_cmake_opts = engine_cmake_opts.replace('$' + option + '$', 'OFF')
 
-        # bin_suffix, libs_suffix
-
         return engine_cmake_opts
 
     def __generate(self):
         hpccm.config.set_container_format(self.cli.args.format)
         print(self.stages['build'])
-        print(self.stages['runtime'])
+        print(self.stages['deploy'])
