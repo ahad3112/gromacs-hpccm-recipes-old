@@ -22,7 +22,7 @@ class CLI:
         self.parser.add_argument('--format', type=str, default='docker', choices=['docker', 'singularity'],
                                  help='Container specification format (default: docker).')
         self.parser.add_argument('--gromacs', type=str,
-                                 help='GROMACS version (default: {0})'.format(config.DEFAULT_GROMACS_VERSION))
+                                 help='enable and set GROMACS version.')
 
         self.parser.add_argument('--fftw', type=str,
                                  help='enable and set fftw version.')

@@ -8,6 +8,8 @@ import os
 import hpccm
 from hpccm.primitives import baseimage
 
+import config
+
 
 class BuildRecipes:
     '''
@@ -16,8 +18,8 @@ class BuildRecipes:
     # tag = 'cmake-{cmake_version}-gcc-{gcc_version}-fftw-{fftw_version}-{mpi}'
     stages = {}
     # _os_packages
-    # _os_packages = ['vim',
-    #                 'wget', ]
+    _os_packages = ['vim',
+                    'wget', ]
     # python packages
 
     def __init__(self, *, cli):
@@ -45,8 +47,6 @@ class BuildRecipes:
 
         # python
         self.stages['build'] += hpccm.building_blocks.python()
-        # scif
-        self.stages['build'] += hpccm.building_blocks.pip(packages=['scif'])
 
         # cmake
         self.__add_cmake(stage='build')
@@ -111,20 +111,15 @@ class BuildRecipes:
 class GromacsRecipes(BuildRecipes):
     # tag = 'ahad3112/gromacs:{gromacs_version}-cmake-{cmake_version}' + \
     #     '-gcc-{gcc_version}-fftw-{fftw_version}-{mpi}'
-    # The following option will add later
-    # -DGMX_DEFAULT_SUFFIX=OFF \
-    # -DGMX_BINARY_SUFFIX=$bin_suffix$ \
-    # -DGMX_LIBS_SUFFIX=$libs_suffix$ \
 
     directory = 'gromacs-{version}'
     build_directory = 'build.{simd}'
-    # prefix = '/usr/local/gromacs-{simd}'
-    prefix = '/scif/apps/gromacs-{simd}'
+    prefix = config.GMX_INSTALLATION_DIRECTORY
     build_environment = {}
     url = 'ftp://ftp.gromacs.org/pub/gromacs/gromacs-{version}.tar.gz'
     cmake_opts = "\
-    -DCMAKE_INSTALL_BINDIR=bin \
-    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_INSTALL_BINDIR=bin.$simd$ \
+    -DCMAKE_INSTALL_LIBDIR=lib.$simd$ \
     -DCMAKE_C_COMPILER=$c_compiler$ \
     -DCMAKE_CXX_COMPILER=$cxx_compiler$ \
     -DGMX_OPENMP=ON \
@@ -140,7 +135,13 @@ class GromacsRecipes(BuildRecipes):
     -DGMX_PREFER_STATIC_LIBS=ON \
     -DREGRESSIONTEST_DOWNLOAD=$regtest$ \
     -DGMX_BUILD_MDRUN_ONLY=$mdrun$ \
+    -DGMX_DEFAULT_SUFFIX=OFF \
+    -DGMX_BINARY_SUFFIX=$bin_suffix$ \
+    -DGMX_LIBS_SUFFIX=$libs_suffix$ \
     "
+
+    # list of wrapper
+    wrappers = []
 
     def __init__(self, *, cli):
         BuildRecipes.__init__(self, cli=cli)
@@ -155,41 +156,73 @@ class GromacsRecipes(BuildRecipes):
         # Add common build stage
         BuildRecipes._BuildRecipes__initiate_build_stage(self)
 
-        # iterate through each engine options to modify cmake_opts  ... Try without sci-f for now
+        # iterate through each engine options to modify cmake_opts
         engine_cmake_opts = self.__get_cmake_opts()
-
         for engine in self.cli.gromacs_engines:
+            # binary and library suffix
+            bin_libs_suffix = self.__get_bin_libs_suffix(engine['rdtscp'])
+            cmake_opts = engine_cmake_opts.replace('$bin_suffix$', bin_libs_suffix)
+            cmake_opts = cmake_opts.replace('$libs_suffix$', bin_libs_suffix)
+
+            # wrapper suffix
+            self.wrappers.append('mdrun') if engine['mdrun'].lower() == 'on' else self.wrappers.append('gmx')
+
             # simd, rdtscp, mdrun
             for key in engine:
                 value = engine[key] if key == 'simd' else engine[key].upper()
-                engine_cmake_opts = engine_cmake_opts.replace('$' + key + '$', value)
+                cmake_opts = cmake_opts.replace('$' + key + '$', value)
 
-            # bin_suffix, libs suffix
+            self.stages['build'] += hpccm.building_blocks.generic_cmake(cmake_opts=cmake_opts.split(),
+                                                                        directory=self.directory.format(version=self.cli.args.gromacs),
+                                                                        build_directory=self.build_directory.format(simd=engine['simd']),
+                                                                        prefix=self.prefix.format(simd=engine['simd']),
+                                                                        build_environment=self.build_environment,
+                                                                        url=self.url.format(version=self.cli.args.gromacs))
 
-            # scif
-            gromacs = hpccm.building_blocks.scif(name='gromacs-{simd}'.format(simd=engine['simd']))
-            gromacs += hpccm.primitives.comment('GROMACS-{version} installation with SIMD: {simd}'.format(version=self.cli.args.gromacs, simd=engine['simd']))
-
-            gromacs += hpccm.building_blocks.generic_cmake(cmake_opts=engine_cmake_opts.split(),
-                                                           directory=self.directory.format(version=self.cli.args.gromacs),
-                                                           build_directory=self.build_directory.format(simd=engine['simd']),
-                                                           prefix=self.prefix.format(simd=engine['simd']),
-                                                           build_environment=self.build_environment,
-                                                           url=self.url.format(version=self.cli.args.gromacs))
-
-            gromacs += hpccm.primitives.label(metadata={'SIMD': engine['simd']})
-
-            self.stages['build'] += gromacs
+        wrapper_suffix = self.__get_wrapper_suffix()
+        self.wrappers = [wrapper + wrapper_suffix for wrapper in set(self.wrappers)]
+        # print(self.wrappers)
 
     def __deployment_stage(self, *, build_stage):
         self.stages['deploy'] = hpccm.Stage()
         self.stages['deploy'] += baseimage(image=self.base_image)
+        self.stages['deploy'] += hpccm.building_blocks.packages(ospackages=self._os_packages)
         self.stages['deploy'] += self.stages[build_stage].runtime()
 
-        for engine in self.cli.gromacs_engines:
-            self.stages['deploy'] += hpccm.primitives.environment(variables={'PATH': '$PATH:/usr/local/gromacs/bin.{simd}'.format(simd=engine['simd'])})
+        # setting wrapper binaries
+        # create the wrapper binaries directory
+        wrappers_directory = os.path.join(config.GMX_INSTALLATION_DIRECTORY, 'bin')
+        self.stages['deploy'] += hpccm.primitives.shell(commands=['mkdir -p {}'.format(wrappers_directory)])
+
+        for wrapper in self.wrappers:
+            wrapper_path = os.path.join(wrappers_directory, wrapper)
+            self.stages['deploy'] += hpccm.primitives.copy(src='/scripts/wrapper.py',
+                                                           dest=wrapper_path)
+
+        # setting the gmx_chooser script
+        self.stages['deploy'] += hpccm.primitives.copy(src='/scripts/gmx_chooser.py',
+                                                       dest=os.path.join(wrappers_directory, 'gmx_chooser.py'))
+        # chmod
+        self.stages['deploy'] += hpccm.primitives.shell(commands=['chmod +x {}'.format(
+            os.path.join(wrappers_directory, '*')
+        )])
+
+        # copying config file
+        self.stages['deploy'] += hpccm.primitives.copy(src='config.py',
+                                                       dest=os.path.join(wrappers_directory, 'config.py'))
+        # environment variable
+        self.stages['deploy'] += hpccm.primitives.environment(variables={'PATH': '$PATH:{}'.format(wrappers_directory)})
 
         self.stages['deploy'] += hpccm.primitives.label(metadata={'gromacs.version': self.cli.args.gromacs})
+
+    def __get_wrapper_suffix(self):
+        return config.WRAPPER_SUFFIX_FORMAT.format(mpi=config.GMX_ENGINE_SUFFIX_OPTIONS['mpi'] if self.cli.args.openmpi or self.cli.args.impi else '',
+                                                   double=config.GMX_ENGINE_SUFFIX_OPTIONS['double'] if self.cli.args.double else '')
+
+    def __get_bin_libs_suffix(self, rdtscp):
+        return config.BINARY_SUFFIX_FORMAT.format(mpi=config.GMX_ENGINE_SUFFIX_OPTIONS['mpi'] if self.cli.args.openmpi or self.cli.args.impi else '',
+                                                  double=config.GMX_ENGINE_SUFFIX_OPTIONS['double'] if self.cli.args.double else '',
+                                                  rdtscp=config.GMX_ENGINE_SUFFIX_OPTIONS['rdtscp'] if rdtscp.lower() == 'on' else '')
 
     def __get_cmake_opts(self):
         engine_cmake_opts = self.cmake_opts[:]
