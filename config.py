@@ -7,13 +7,13 @@ import os
 
 # Argument options for GROMACS : TODO : The Following Things needs to be simplified
 ARCHITECTURES = ['avx_512f', 'avx2', 'avx', 'sse2']
-BINARY_DIRECTORY_SUFFIX = ['AVX_512', 'AVX2_256', 'AVX_256', 'SSE2']
+GMX_BINARY_DIRECTORY_SUFFIX = ['AVX_512', 'AVX2_256', 'AVX_256', 'SSE2']
 
 ENGINE_OPTIONS = {'simd': ARCHITECTURES,
                   'rdtscp': ['on', 'off'],
                   'mdrun': ['on', 'off']}
 
-SIMD_MAPPER = dict(zip(ENGINE_OPTIONS['simd'], BINARY_DIRECTORY_SUFFIX))
+SIMD_MAPPER = dict(zip(ENGINE_OPTIONS['simd'], GMX_BINARY_DIRECTORY_SUFFIX))
 
 
 # Default Arguments

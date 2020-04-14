@@ -19,7 +19,7 @@ def is_executable(file):
 
 # Choose the best possible GROMACS based on cpu's SIMD instruction
 def get_binary_directory(flags, gmx):
-    for (index, (arch, bin_suffix)) in enumerate(zip(config.ARCHITECTURES, config.BINARY_DIRECTORY_SUFFIX)):
+    for (index, (arch, bin_suffix)) in enumerate(zip(config.ARCHITECTURES, config.GMX_BINARY_DIRECTORY_SUFFIX)):
         bin_dir = config.GMX_BINARY_DIRECTORY.format(bin_suffix)
         if arch in flags and os.path.exists(bin_dir):
             fileshere = os.listdir(bin_dir)
