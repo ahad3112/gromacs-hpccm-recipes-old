@@ -4,6 +4,7 @@ Author :
 '''
 import sys
 import os
+
 import config
 
 
@@ -21,17 +22,17 @@ class CLI:
         # Minimal environment requirement
         self.parser.add_argument('--format', type=str, default='docker', choices=['docker', 'singularity'],
                                  help='Container specification format (default: docker).')
-        self.parser.add_argument('--gromacs', type=str,
-                                 help='enable and set GROMACS version.')
+        self.parser.add_argument('--gromacs', type=str, default=config.DEFAULT_GROMACS_VERSION,
+                                 help='set GROMACS version (default: {0}).'.format(config.DEFAULT_GROMACS_VERSION))
 
         self.parser.add_argument('--fftw', type=str,
-                                 help='enable and set fftw version.')
+                                 help='set fftw version. If not provided, GROMACS installtion will download and build FFTW from source.')
 
         self.parser.add_argument('--cmake', type=str, default=config.DEFAULT_CMAKE_VERSION,
-                                 help='cmake version (default: {0})'.format(config.DEFAULT_CMAKE_VERSION))
+                                 help='cmake version (default: {0}).'.format(config.DEFAULT_CMAKE_VERSION))
 
         self.parser.add_argument('--gcc', type=str, default=config.DEFAULT_GCC_VERSION,
-                                 help='gcc version (default: {0})'.format(config.DEFAULT_GCC_VERSION))
+                                 help='gcc version (default: {0}).'.format(config.DEFAULT_GCC_VERSION))
 
         # Optional environment requirement
         self.parser.add_argument('--cuda', type=str, help='enable and set cuda version.')
@@ -89,7 +90,7 @@ class CLI:
         elif sys.platform in ['darwin', ]:
             flags = os.popen('sysctl -n machdep.cpu.features machdep.cpu.leaf7_features').read()
         else:
-            raise RuntimeError('Windows not supported yet...')
+            raise SystemExit('Windows not supported yet...')
 
         engine = {}
         for simd in config.ENGINE_OPTIONS['simd']:

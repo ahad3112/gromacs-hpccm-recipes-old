@@ -5,8 +5,9 @@ Author :
 
 from __future__ import print_function
 import os
+from distutils.version import StrictVersion
+
 import hpccm
-from hpccm.primitives import baseimage
 
 import config
 
@@ -15,12 +16,9 @@ class BuildRecipes:
     '''
     Docker/Singularity container specification
     '''
-    # tag = 'cmake-{cmake_version}-gcc-{gcc_version}-fftw-{fftw_version}-{mpi}'
     stages = {}
-    # _os_packages
-    _os_packages = ['vim',
-                    'wget', ]
-    # python packages
+    # os_packages
+    os_packages = ['vim', 'wget']
 
     def __init__(self, *, cli):
         self.cli = cli
@@ -29,7 +27,8 @@ class BuildRecipes:
 
     def __define_base_image(self):
         if self.cli.args.cuda:
-            raise ValueError('Wrong Option : cuda is not supported.')
+            # TODO : add on second iteration
+            raise RuntimeError('Wrong Option : cuda is not supported.')
         else:
             if self.cli.args.ubuntu:
                 self.base_image = 'ubuntu:' + self.cli.args.ubuntu
@@ -43,30 +42,34 @@ class BuildRecipes:
     def __initiate_build_stage(self):
         self.stages['build'] = hpccm.Stage()
 
-        self.stages['build'] += baseimage(image=self.base_image, _as='build')
+        self.stages['build'] += hpccm.primitives.baseimage(image=self.base_image, _as='build')
 
-        # python
-        self.stages['build'] += hpccm.building_blocks.python()
+        # python TODO: need to think whether to have this in the container
+        self.stages['build'] += hpccm.building_blocks.python(python3=True,
+                                                             python2=False,
+                                                             devel=False)
 
         # cmake
         self.__add_cmake(stage='build')
         # compiler
         self.__add_compiler(stage='build')
-
         # mpi
-        if self.cli.args.openmpi or self.cli.args.impi:
-            self.__add_mpi(stage='build')
-
+        self.__add_mpi(stage='build')
         # fftw
         self.__add_fftw(stage='build')
 
     def __add_cmake(self, *, stage):
-        if self.cli.args.cmake:
+        if self.cli.args.cmake and BuildRecipes.version_checked('CMake',
+                                                                config.CMAKE_MIN_REQUIRED_VERSION,
+                                                                self.cli.args.cmake):
             self.stages[stage] += hpccm.building_blocks.cmake(eula=True, version=self.cli.args.cmake)
         else:
-            raise RuntimeError('Input Error : cmake is missing')
+            raise RuntimeError('Implementation Error : Default CMake is missing')
 
     def __add_compiler(self, *, stage):
+        # if self.cli.args.gcc and BuildRecipes.version_checked('gcc',
+        #                                                       config.GCC_MIN_REQUIRED_VERSION,
+        #                                                       self.cli.args.gcc):
         if self.cli.args.gcc:
             self.compiler = hpccm.building_blocks.gnu(fortran=False, version=self.cli.args.gcc)
             self.stages[stage] += self.compiler
@@ -75,27 +78,24 @@ class BuildRecipes:
 
     def __add_fftw(self, *, stage):
         if self.cli.args.fftw:
-            # fftw configure opts : Later we may try to set this from the user perspective
-            configure_opts = ['--enable-openmp', '--enable-shared', '--enable-threads',
-                              '--enable-sse2', '--enable-avx', '--enable-avx2', '--enable-avx512',
-                              '--disable-static', ]
+            # TODO: fftw configure opts : Later we may try to set this from the user perspective
+            configure_opts = ['--enable-shared', '--disable-static', '--enable-sse2',
+                              '--enable-avx', '--enable-avx2', '--enable-avx512']
             # configuring configure_opts for fftw
             if not self.cli.args.double:
                 configure_opts.append('--enable-float')
 
-            # Don't think mpi option is necessary
-            mpi = True if self.cli.args.openmpi else False
-
             if hasattr(self.compiler, 'toolchain'):
                 self.stages[stage] += hpccm.building_blocks.fftw(toolchain=self.compiler.toolchain,
                                                                  configure_opts=configure_opts,
-                                                                 mpi=mpi,
                                                                  version=self.cli.args.fftw)
             else:
                 raise RuntimeError('Implementation Error: compiler is not an HPCCM building block')
 
     def __add_mpi(self, *, stage):
-        if self.cli.args.openmpi:
+        if self.cli.args.openmpi and BuildRecipes.version_checked('openmpi',
+                                                                  config.OPENMPI_MIN_REQUIRED_VERSION,
+                                                                  self.cli.args.openmpi):
             if hasattr(self.compiler, 'toolchain'):
                 self.stages[stage] += hpccm.building_blocks.openmpi(cuda=False, infiniband=False,
                                                                     toolchain=self.compiler.toolchain,
@@ -106,17 +106,33 @@ class BuildRecipes:
         elif self.cli.args.impi:
             raise RuntimeError('Input Error: Intel MPI not implemented yet.')
 
+    @staticmethod
+    def version_checked(tool, required, given):
+        if StrictVersion(given) < StrictVersion(required):
+            raise RuntimeError('Invalid {tool} version: {given}. Minimum required version: {required}.'.format(
+                tool=tool,
+                given=given,
+                required=required
+            ))
 
-# The reason to use separate class for GromacsRecipes is to use Paul's BuildStage here... if required
+        return True
+
+
 class GromacsRecipes(BuildRecipes):
-    # tag = 'ahad3112/gromacs:{gromacs_version}-cmake-{cmake_version}' + \
-    #     '-gcc-{gcc_version}-fftw-{fftw_version}-{mpi}'
-
+    '''
+    This class mostly deals with configuring GROMACS and stage['deploy']
+    Most part of the build stage is delegated to super class BuildRecipes
+    '''
     directory = 'gromacs-{version}'
     build_directory = 'build.{simd}'
     prefix = config.GMX_INSTALLATION_DIRECTORY
     build_environment = {}
     url = 'ftp://ftp.gromacs.org/pub/gromacs/gromacs-{version}.tar.gz'
+
+    regtest_url = 'http://gerrit.gromacs.org/download/regressiontests-{version}.tar.gz'
+    regtest_tar = os.path.split(regtest_url)[1]
+    regtest_directory = regtest_tar.replace('.tar.gz', '')
+
     cmake_opts = "\
     -DCMAKE_INSTALL_BINDIR=bin.$simd$ \
     -DCMAKE_INSTALL_LIBDIR=lib.$simd$ \
@@ -140,7 +156,7 @@ class GromacsRecipes(BuildRecipes):
     -DGMX_LIBS_SUFFIX=$libs_suffix$ \
     "
 
-    # list of wrapper
+    # list of wrapper binaries
     wrappers = []
 
     def __init__(self, *, cli):
@@ -156,7 +172,9 @@ class GromacsRecipes(BuildRecipes):
         # Add common build stage
         BuildRecipes._BuildRecipes__initiate_build_stage(self)
 
-        # iterate through each engine options to modify cmake_opts
+        # iterate through each GrROMACS engine options to modify cmake_opts
+        # TODO: Download GROMACS only once...
+
         engine_cmake_opts = self.__get_cmake_opts()
         for engine in self.cli.gromacs_engines:
             # binary and library suffix
@@ -172,21 +190,38 @@ class GromacsRecipes(BuildRecipes):
                 value = engine[key] if key == 'simd' else engine[key].upper()
                 cmake_opts = cmake_opts.replace('$' + key + '$', value)
 
+            # Adding regression test
+            check = True if self.cli.args.regtest and engine['mdrun'].lower() == 'off' else False
+
             self.stages['build'] += hpccm.building_blocks.generic_cmake(cmake_opts=cmake_opts.split(),
                                                                         directory=self.directory.format(version=self.cli.args.gromacs),
                                                                         build_directory=self.build_directory.format(simd=engine['simd']),
-                                                                        prefix=self.prefix.format(simd=engine['simd']),
+                                                                        prefix=self.prefix,
                                                                         build_environment=self.build_environment,
-                                                                        url=self.url.format(version=self.cli.args.gromacs))
+                                                                        url=self.url.format(version=self.cli.args.gromacs),
+                                                                        check=check)
+            if self.cli.args.regtest and not check:
+                # TODO :We may avoid downloading regression test here.... as gromacs can download it for us
+                # In case of regtest flag is on....
+                self.stages['build'] += hpccm.primitives.shell(commands=['mkdir -p /var/tmp',
+                                                                         'wget -q -nc --no-check-certificate -P /var/tmp {}'.format(self.regtest_url.format(version=self.cli.args.gromacs)),
+                                                                         'mkdir -p /var/tmp',
+                                                                         'tar -x -f /var/tmp/{regtest_tar} -C /var/tmp -z'.format(regtest_tar=self.regtest_tar.format(version=self.cli.args.gromacs)),
+                                                                         'cd /var/tmp/{regtest_directory}'.format(regtest_directory=self.regtest_directory.format(version=self.cli.args.gromacs)),
+                                                                         '{script} all -np 2'.format(script=os.path.join(config.GMX_BINARY_DIRECTORY.format(engine['simd']), 'gmxtest.pl')),
+                                                                         'rm -rf /var/tmp/{regtest_tar} /var/tmp/{regtest_directory}'.format(
+                                                                             regtest_tar=self.regtest_tar.format(version=self.cli.args.gromacs),
+                                                                             regtest_directory=self.regtest_directory.format(version=self.cli.args.gromacs))
+                                                                         ]
+                                                               )
 
         wrapper_suffix = self.__get_wrapper_suffix()
         self.wrappers = [wrapper + wrapper_suffix for wrapper in set(self.wrappers)]
-        # print(self.wrappers)
 
     def __deployment_stage(self, *, build_stage):
         self.stages['deploy'] = hpccm.Stage()
-        self.stages['deploy'] += baseimage(image=self.base_image)
-        self.stages['deploy'] += hpccm.building_blocks.packages(ospackages=self._os_packages)
+        self.stages['deploy'] += hpccm.primitives.baseimage(image=self.base_image)
+        self.stages['deploy'] += hpccm.building_blocks.packages(ospackages=self.os_packages)
         self.stages['deploy'] += self.stages[build_stage].runtime()
 
         # setting wrapper binaries

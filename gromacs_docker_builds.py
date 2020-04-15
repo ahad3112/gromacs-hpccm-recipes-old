@@ -10,12 +10,9 @@ Usage:
 
 import argparse
 from utilities.cli import CLI
-from container.recipes import BuildRecipes, GromacsRecipes
+from container.recipes import GromacsRecipes
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='GROMACS recipes for container')
+    parser = argparse.ArgumentParser(description='HPCCM recipes for GROMACS container')
     cli = CLI(parser=parser)
-    if cli.args.gromacs:
-        spec = GromacsRecipes(cli=cli)
-    else:
-        spec = BuildRecipes(cli=cli)
+    GromacsRecipes(cli=cli)
