@@ -1,7 +1,38 @@
-# gromacs-hpccm-recipes
+# GROMACS 2020.1
 HPCCM recipes for GROMACS build and installation
 
+####Usage:
 
-#### Sample Command
+    $ ./gromacs_docker_builds.py -h/--help
 
-    /gromacs_docker_builds.py --ubuntu 18.04 --engines simd=sse2:rdtscp=off:mdrun=off simd=avx2:rdtscp=on:mdrun=on simd=avx2:rdtscp=off:mdrun=on  --gromacs 2020.1> Dockerfile
+## Building Image
+##### Sample Command
+
+    /gromacs_docker_builds.py --format docker --ubuntu 18.04 --engines simd=sse2:rdtscp=off:mdrun=off simd=avx2:rdtscp=on:mdrun=on simd=avx2:rdtscp=off:mdrun=on  --gromacs 2020.1> Dockerfile
+
+
+## Running Image
+The Available GROMACS wrapper binaries will be the followings based on `mpi` enabled or disabled and `mdrun` value:
+option on `docker_build.py`:
+
+* `gmx`
+* `gmx_mpi`
+* `mdrun`
+* `mdrun_mpi`
+
+Wrapper binaries `mdrun` and `mdrun_mpi` represent `mdrun_only` installation of GROMACS.
+To use other GROMACS tools such as `pdb2gmx`, `grompp`, `editconf` etc. full installation
+of GROMACS are required. Full installation of GROMACS are wrapped within `gmx` and `gmx_mpi`.
+
+
+#### Without Singularity
+
+Bind the directory that you want Docker to get access to. Below is an example of running `mdrun` module using `gmx` wrapper:
+
+    mkdir $HOME/data
+    docker run -v $HOME/data:/data -w /data -it <image_name> gmx mdrun -s <.tpr file> -deffnm <ouput_file_name>
+
+
+## Dependencies
+
+* `python3`

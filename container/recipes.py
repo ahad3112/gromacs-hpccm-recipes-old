@@ -195,23 +195,31 @@ class GromacsRecipes(BuildRecipes):
                 cmake_opts = cmake_opts.replace('$' + key + '$', value)
 
             # Adding regression test
-            check = True if self.cli.args.regtest and engine['mdrun'].lower() == 'off' else False
+            if self.cli.args.regtest:
+                postinstall = []
+                preconfigure = []
+                check = False
+                common = ['apt-get update',
+                          'apt-get upgrade -y',
+                          'apt-get install -y perl',
+                          ]
 
-            postinstall = []
-            if self.cli.args.regtest and not check:
-                postinstall = [
-                    'apt-get update',
-                    'apt-get upgrade -y',
-                    'apt-get install -y perl',
-                    'export PATH={GMX_BINARY_DIRECTORY}:$PATH'.format(
-                        GMX_BINARY_DIRECTORY=config.GMX_BINARY_DIRECTORY.format(
-                            engine['simd']
-                        )),
-                    '{regtest} all -np 2'.format(regtest=self.regtest.format(
-                        version=self.cli.args.gromacs,
-                        simd=engine['simd']
-                    ))
-                ]
+                if engine['mdrun'].lower() == 'off':
+                    check = True
+                    preconfigure.extend(common)
+
+                else:
+                    postinstall.extend(common)
+                    postinstall.extend([
+                        'export PATH={GMX_BINARY_DIRECTORY}:$PATH'.format(
+                            GMX_BINARY_DIRECTORY=config.GMX_BINARY_DIRECTORY.format(
+                                engine['simd']
+                            )),
+                        '{regtest} all -np 2'.format(regtest=self.regtest.format(
+                            version=self.cli.args.gromacs,
+                            simd=engine['simd']
+                        ))
+                    ])
 
             # Generic cmake
             self.stages['build'] += hpccm.building_blocks.generic_cmake(cmake_opts=cmake_opts.split(),
@@ -220,6 +228,7 @@ class GromacsRecipes(BuildRecipes):
                                                                         prefix=self.prefix,
                                                                         build_environment=self.build_environment,
                                                                         url=self.url.format(version=self.cli.args.gromacs),
+                                                                        preconfigure=preconfigure,
                                                                         check=check,
                                                                         postinstall=postinstall)
 
