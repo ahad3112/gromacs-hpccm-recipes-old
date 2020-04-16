@@ -1,7 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import sys
 import os
-from subprocess import Popen, PIPE, call
 import config
 
 
@@ -58,8 +57,8 @@ def get_possible_gmx_directory(flags, gmx, chosen_dir, chosen_gmx, chosen_args):
 if __name__ == '__main__':
     sys.argv[1] = os.path.split(sys.argv[1])[1]
 
-    pipe = Popen('cat /proc/cpuinfo | grep ^flags | head -1', stdout=PIPE, shell=True)
-    flags = pipe.communicate()[0]
+    pipe = os.popen('cat /proc/cpuinfo | grep ^flags | head -1')
+    flags = pipe.read()
 
     rdtscp_enabled = True if RDTSCP in flags else False
 
