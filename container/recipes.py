@@ -195,10 +195,9 @@ class GromacsRecipes(BuildRecipes):
                 cmake_opts = cmake_opts.replace('$' + key + '$', value)
 
             # Adding regression test
-            check = False
-            postinstall = []
-            # check = True if self.cli.args.regtest and engine['mdrun'].lower() == 'off' else False
+            check = True if self.cli.args.regtest and engine['mdrun'].lower() == 'off' else False
 
+            postinstall = []
             if self.cli.args.regtest and not check:
                 postinstall = [
                     'apt-get update',
@@ -223,27 +222,6 @@ class GromacsRecipes(BuildRecipes):
                                                                         url=self.url.format(version=self.cli.args.gromacs),
                                                                         check=check,
                                                                         postinstall=postinstall)
-            # if self.cli.args.regtest and not check:
-            # TODO :We may avoid downloading regression test here.... as gromacs can download it for us
-            # In case of regtest flag is on....
-            # ??????? : gmxtest.pl file is missing in mdrun only version ?????????
-
-            # self.stages['build'] += hpccm.primitives.shell(commands=[
-            #     'cd /var/tmp/{directory}/test'
-            # ])
-
-            # self.stages['build'] += hpccm.primitives.shell(commands=['mkdir -p /var/tmp',
-            #                                                          'wget -q -nc --no-check-certificate -P /var/tmp {}'.format(self.regtest_url.format(version=self.cli.args.gromacs)),
-            #                                                          'mkdir -p /var/tmp',
-            #                                                          'tar -x -f /var/tmp/{regtest_tar} -C /var/tmp -z'.format(regtest_tar=self.regtest_tar.format(version=self.cli.args.gromacs)),
-            #                                                          'cd /var/tmp/{regtest_directory}'.format(regtest_directory=self.regtest_directory.format(version=self.cli.args.gromacs)),
-            #                                                          'source {GMXRC}'.format(GMXRC=os.path.join(config.GMX_BINARY_DIRECTORY.format(engine['simd']), 'GMXRC')),
-            #                                                          './gmxtest.pl all -np 2',
-            #                                                          'rm -rf /var/tmp/{regtest_tar} /var/tmp/{regtest_directory}'.format(
-            #                                                              regtest_tar=self.regtest_tar.format(version=self.cli.args.gromacs),
-            #                                                              regtest_directory=self.regtest_directory.format(version=self.cli.args.gromacs))
-            #                                                          ]
-            #                                                )
 
         wrapper_suffix = self.__get_wrapper_suffix()
         self.wrappers = [wrapper + wrapper_suffix for wrapper in set(self.wrappers)]
