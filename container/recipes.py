@@ -195,10 +195,10 @@ class GromacsRecipes(BuildRecipes):
                 cmake_opts = cmake_opts.replace('$' + key + '$', value)
 
             # Adding regression test
+            postinstall = []
+            preconfigure = []
+            check = False
             if self.cli.args.regtest:
-                postinstall = []
-                preconfigure = []
-                check = False
                 common = ['apt-get update',
                           'apt-get upgrade -y',
                           'apt-get install -y perl',
