@@ -37,7 +37,7 @@ class BuildRecipes:
             else:
                 raise RuntimeError('Input Error: No Linux distribution was chosen.')
 
-        # We need to check whether the base image is available or not
+        # TODO: We need to check whether the base image is available or not
 
     def __initiate_build_stage(self):
         self.stages['build'] = hpccm.Stage()
@@ -131,11 +131,13 @@ class GromacsRecipes(BuildRecipes):
 
     # regression test
     regtest = '/var/tmp/' + directory + '/' + build_directory + \
-        '/tests/regressiontests-{version}/gmxtest.pl'
+        '/tests/regressiontests-{version}/gmxtest.pl all {np} -suffix {suffix}'
 
-    # regtest_url = 'http://gerrit.gromacs.org/download/regressiontests-{version}.tar.gz'
-    # regtest_tar = os.path.split(regtest_url)[1]
-    # regtest_directory = regtest_tar.replace('.tar.gz', '')
+    # Regression test : direct download and direct gmxtest.pl call
+    regressiontest_url = 'http://gerrit.gromacs.org/download/regressiontests-{version}.tar.gz'
+    regressiontest_tarball = os.path.split(regressiontest_url)[1]
+    regressiontest_directory = regressiontest_tarball.replace('.tar.gz', '')
+    regressiontest = os.path.join(regressiontest_directory, 'gmxtest.pl')
 
     cmake_opts = "\
     -DCMAKE_INSTALL_BINDIR=bin.$simd$ \
@@ -199,25 +201,26 @@ class GromacsRecipes(BuildRecipes):
             preconfigure = []
             check = False
             if self.cli.args.regtest:
-                common = ['apt-get update',
-                          'apt-get upgrade -y',
-                          'apt-get install -y perl',
-                          ]
+                perl = ['apt-get update',
+                        'apt-get upgrade -y',
+                        'apt-get install -y perl',
+                        ]
 
                 if engine['mdrun'].lower() == 'off':
                     check = True
-                    preconfigure.extend(common)
+                    preconfigure.extend(perl)
 
                 else:
-                    postinstall.extend(common)
-                    postinstall.extend([
+                    postinstall.extend(perl + [
                         'export PATH={GMX_BINARY_DIRECTORY}:$PATH'.format(
                             GMX_BINARY_DIRECTORY=config.GMX_BINARY_DIRECTORY.format(
                                 engine['simd']
                             )),
-                        '{regtest} all -np 2'.format(regtest=self.regtest.format(
+                        '{regtest}'.format(regtest=self.regtest.format(
                             version=self.cli.args.gromacs,
-                            simd=engine['simd']
+                            simd=engine['simd'],
+                            np='-np 2' if self.cli.args.openmpi or self.cli.args.impi else '',
+                            suffix=bin_libs_suffix
                         ))
                     ])
 
@@ -232,6 +235,7 @@ class GromacsRecipes(BuildRecipes):
                                                                         check=check,
                                                                         postinstall=postinstall)
 
+        # Addimg appropriate suffix to the wrapper binaries
         wrapper_suffix = self.__get_wrapper_suffix()
         self.wrappers = [wrapper + wrapper_suffix for wrapper in set(self.wrappers)]
 
@@ -283,6 +287,19 @@ class GromacsRecipes(BuildRecipes):
             engine_cmake_opts = engine_cmake_opts.replace('$c_compiler$', 'mpicc')
             engine_cmake_opts = engine_cmake_opts.replace('$cxx_compiler$', 'mpicxx')
             engine_cmake_opts = engine_cmake_opts.replace('$mpi$', 'ON')
+
+            # setting for regtest
+            if self.cli.args.regtest:
+                # TODO: missing mpiexec ??????????
+                # regtest_mpi_cmake_variables = "-DMPIEXEC=mpiexec \
+                # -DMPIEXEC_NUMPROC_FLAG=-np \
+                # -DMPIEXEC_PREFLAGS='--allow-run-as-root;--oversubscribe' \
+                # -DMPIEXEC_POSTFLAGS= "
+                regtest_mpi_cmake_variables = " -DMPIEXEC_NUMPROC_FLAG=-np \
+                        -DMPIEXEC_PREFLAGS='--allow-run-as-root;--oversubscribe'\
+                        -DMPIEXEC_POSTFLAGS="
+                engine_cmake_opts = engine_cmake_opts + regtest_mpi_cmake_variables
+
         else:
             engine_cmake_opts = engine_cmake_opts.replace('$c_compiler$', 'gcc')
             engine_cmake_opts = engine_cmake_opts.replace('$cxx_compiler$', 'g++')
@@ -291,7 +308,7 @@ class GromacsRecipes(BuildRecipes):
         #  fftw
         if self.cli.args.fftw:
             engine_cmake_opts = engine_cmake_opts.replace('$fft$', 'GMX_FFT_LIBRARY=fftw3')
-            self.build_environment['CMAKE_PREFIX_PATH'] = '/usr/local/fftw'
+            self.build_environment['CMAKE_PREFIX_PATH'] = '\'/usr/local/fftw\''
         else:
             engine_cmake_opts = engine_cmake_opts.replace('$fft$', 'GMX_BUILD_OWN_FFTW=ON')
 
@@ -308,3 +325,45 @@ class GromacsRecipes(BuildRecipes):
         hpccm.config.set_container_format(self.cli.args.format)
         print(self.stages['build'])
         print(self.stages['deploy'])
+
+    # TODO : Remove the following method if not required...???
+    def __add_direct_regressiontest(self, *, stage, simd, version):
+        # Download regressiontest -> change user -> export GMX binary path -> Run gmxtest.pl all -np 2 directly
+        if self.cli.args.regtest:
+            # If mpi is enabled, we would like to run mpiexec as a not root user
+            # if self.cli.args.openmpi or self.cli.args.impi:
+            #     group = 'gromacs'
+            #     user = 'regression-tester'
+            #     self.stages[stage] += hpccm.primitives.shell(commands=[
+            #         'groupadd -r {group}'.format(group=group),
+            #         'useradd -r -g {group} {user}'.format(group=group, user=user)
+            #     ])
+            #     self.stages[stage] += hpccm.primitives.user(user=user)
+
+            self.stages[stage] += hpccm.primitives.shell(commands=[
+                'apt-get update',
+                'apt-get upgrade -y',
+                'apt-get install -y perl',
+                'mkdir -p /var/tmp',
+                'wget -q -nc --no-check-certificate -P /var/tmp {regressiontest_url}'.format(
+                    regressiontest_url=self.regressiontest_url.format(
+                        version=version
+                    )
+                ),
+                'mkdir -p /var/tmp',
+                'tar -x -f /var/tmp/{tarball} -C /var/tmp -z'.format(
+                    tarball=self.regressiontest_tarball.format(
+                        version=version
+                    )
+                ),
+                'export PATH={GMX_BINARY_DIRECTORY}:$PATH'.format(
+                    GMX_BINARY_DIRECTORY=config.GMX_BINARY_DIRECTORY.format(
+                        simd
+                    )
+                ),
+                '/var/tmp/{regressiontest} all -np 2'.format(
+                    regressiontest=self.regressiontest.format(
+                        version=version
+                    )
+                )
+            ])
