@@ -33,7 +33,8 @@ class BuildRecipes:
             if self.cli.args.ubuntu:
                 self.base_image = 'ubuntu:' + self.cli.args.ubuntu
             elif self.cli.args.centos:
-                self.base_image = 'centos:centos' + self.cli.args.centos
+                raise RuntimeError('Implementation Error: Chosing Centos distribution as base image not implemented yet properly...')
+                # self.base_image = 'centos:centos' + self.cli.args.centos
             else:
                 raise RuntimeError('Input Error: No Linux distribution was chosen.')
 

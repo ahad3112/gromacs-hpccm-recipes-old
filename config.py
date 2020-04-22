@@ -9,19 +9,19 @@ import os
 ARCHITECTURES = ['avx_512f', 'avx2', 'avx', 'sse2']
 GMX_BINARY_DIRECTORY_SUFFIX = ['AVX_512', 'AVX2_256', 'AVX_256', 'SSE2']
 
-ENGINE_OPTIONS = {'simd': ARCHITECTURES,
-                  'rdtscp': ['on', 'off'],
-                  'mdrun': ['on', 'off']}
+ENGINE_OPTIONS = {
+    'simd': ARCHITECTURES,
+    'rdtscp': ['on', 'off']
+}
 
 SIMD_MAPPER = dict(zip(ENGINE_OPTIONS['simd'], GMX_BINARY_DIRECTORY_SUFFIX))
 
 
 # Default Arguments
-DEFAULT_SIMD = 'sse2'
-DEFAULT_RDTSCP = 'on'
-DEFAULT_MDRUN = 'off'
+# DEFAULT_SIMD = 'sse2'
+# DEFAULT_RDTSCP = 'on'
+# DEFAULT_MDRUN = 'off'
 
-DEFAULT_ENGINES = [dict(zip(ENGINE_OPTIONS.keys(), [DEFAULT_SIMD, DEFAULT_RDTSCP, DEFAULT_MDRUN])), ]
 
 # Minimum Software Version
 

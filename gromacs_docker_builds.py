@@ -14,5 +14,11 @@ from container.recipes import GromacsRecipes
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HPCCM recipes for GROMACS container')
-    cli = CLI(parser=parser)
-    GromacsRecipes(cli=cli)
+    stages = CLI(parser=parser).get_stages()
+
+    for key, value in stages.items():
+        print('|||||||||||', key, value)
+
+    # GromacsRecipes(cli=cli)
+
+    # print(parser.parse_args().__dict__)
