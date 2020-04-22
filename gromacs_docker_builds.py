@@ -10,14 +10,18 @@ Usage:
 
 import argparse
 from utilities.cli import CLI
-from container.recipes import GromacsRecipes
+import container.recipes as recipes
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='HPCCM recipes for GROMACS container')
     stages = CLI(parser=parser).get_stages()
 
-    for key, value in stages.items():
-        print('|||||||||||', key, value)
+    previous_stage = None
+    for (stage, args) in stages.items():
+        try:
+            previous_stage = getattr(recipes, stage)(args=args, previous_stage=previous_stage)
+        except AttributeError as aerror:
+            print(aerror)
 
     # GromacsRecipes(cli=cli)
 

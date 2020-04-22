@@ -12,6 +12,51 @@ import hpccm
 import config
 
 
+class StageMixin:
+    def __init__(self, *, args, previous_stage):
+        self.args = args
+        # print(self.__class /__.__name__, args, previous_stage.__class__.__name__)
+        self._initiate_stage(previous_stage=previous_stage)
+
+    def _initiate_stage(self, *, previous_stage):
+        self.stage = hpccm.Stage()
+        if previous_stage:
+            self.stage += previous_stage._runtime()
+
+        # Now iterate through each arg in args
+        for arg in self.args:
+            try:
+                method = getattr(self, arg)
+            except AttributeError as aerror:
+                print(aerror)
+            except KeyError as kerror:
+                print(kerror)
+            else:
+                method(self.args[arg])
+
+        # Recipe has been created. Now it is time to cook .....
+        self._cook()
+
+    def _runtime(self):
+        return self.stage.runtime()
+
+    def _cook(self):
+        print(self.stage)
+
+
+class DevelopmentStage(StageMixin):
+    def gcc(self, version):
+        print('Implementing GCC')
+
+
+class ApplicationStage(StageMixin):
+    pass
+
+
+class DeploymentStage(StageMixin):
+    pass
+
+
 class BuildRecipes:
     '''
     Docker/Singularity container specification : common stuff
