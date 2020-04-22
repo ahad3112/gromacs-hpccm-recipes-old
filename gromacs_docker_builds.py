@@ -20,8 +20,8 @@ if __name__ == '__main__':
     for (stage, args) in stages.items():
         try:
             previous_stage = getattr(recipes, stage)(args=args, previous_stage=previous_stage)
-        except AttributeError as aerror:
-            print(aerror)
+        except AttributeError as error:
+            print(error)
 
     # GromacsRecipes(cli=cli)
 

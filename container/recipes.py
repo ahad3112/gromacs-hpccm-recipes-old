@@ -27,10 +27,8 @@ class StageMixin:
         for arg in self.args:
             try:
                 method = getattr(self, arg)
-            except AttributeError as aerror:
-                print(aerror)
-            except KeyError as kerror:
-                print(kerror)
+            except AttributeError as error:
+                print(error)
             else:
                 method(self.args[arg])
 
