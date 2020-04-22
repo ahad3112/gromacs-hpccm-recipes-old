@@ -14,7 +14,7 @@ import config
 
 class BuildRecipes:
     '''
-    Docker/Singularity container specification
+    Docker/Singularity container specification : common stuff
     '''
     stages = {}
     # os_packages
@@ -71,7 +71,9 @@ class BuildRecipes:
         #                                                       config.GCC_MIN_REQUIRED_VERSION,
         #                                                       self.cli.args.gcc):
         if self.cli.args.gcc:
-            self.compiler = hpccm.building_blocks.gnu(fortran=False, version=self.cli.args.gcc)
+            self.compiler = hpccm.building_blocks.gnu(extra_repository=True,
+                                                      fortran=False,
+                                                      version=self.cli.args.gcc)
             self.stages[stage] += self.compiler
         else:
             raise RuntimeError('Input Error: Only available compiler option is gcc.')
@@ -120,7 +122,7 @@ class BuildRecipes:
 
 class GromacsRecipes(BuildRecipes):
     '''
-    This class mostly deals with configuring GROMACS and stage['deploy']
+    This class mostly deals with configuring stuff related to GROMACS and
     Most part of the build stage is delegated to super class BuildRecipes
     '''
     directory = 'gromacs-{version}'
@@ -140,27 +142,27 @@ class GromacsRecipes(BuildRecipes):
     regressiontest = os.path.join(regressiontest_directory, 'gmxtest.pl')
 
     cmake_opts = "\
-    -DCMAKE_INSTALL_BINDIR=bin.$simd$ \
-    -DCMAKE_INSTALL_LIBDIR=lib.$simd$ \
-    -DCMAKE_C_COMPILER=$c_compiler$ \
-    -DCMAKE_CXX_COMPILER=$cxx_compiler$ \
-    -DGMX_OPENMP=ON \
-    -DGMX_MPI=$mpi$ \
-    -DGMX_GPU=$cuda$ \
-    -DGMX_SIMD=$simd$ \
-    -DGMX_USE_RDTSCP=$rdtscp$ \
-    -DGMX_DOUBLE=$double$ \
-    -D$fft$ \
-    -DGMX_EXTERNAL_BLAS=OFF \
-    -DGMX_EXTERNAL_LAPACK=OFF \
-    -DBUILD_SHARED_LIBS=OFF \
-    -DGMX_PREFER_STATIC_LIBS=ON \
-    -DREGRESSIONTEST_DOWNLOAD=$regtest$ \
-    -DGMX_BUILD_MDRUN_ONLY=$mdrun$ \
-    -DGMX_DEFAULT_SUFFIX=OFF \
-    -DGMX_BINARY_SUFFIX=$bin_suffix$ \
-    -DGMX_LIBS_SUFFIX=$libs_suffix$ \
-    "
+                -DCMAKE_INSTALL_BINDIR=bin.$simd$ \
+                -DCMAKE_INSTALL_LIBDIR=lib.$simd$ \
+                -DCMAKE_C_COMPILER=$c_compiler$ \
+                -DCMAKE_CXX_COMPILER=$cxx_compiler$ \
+                -DGMX_OPENMP=ON \
+                -DGMX_MPI=$mpi$ \
+                -DGMX_GPU=$cuda$ \
+                -DGMX_SIMD=$simd$ \
+                -DGMX_USE_RDTSCP=$rdtscp$ \
+                -DGMX_DOUBLE=$double$ \
+                -D$fft$ \
+                -DGMX_EXTERNAL_BLAS=OFF \
+                -DGMX_EXTERNAL_LAPACK=OFF \
+                -DBUILD_SHARED_LIBS=OFF \
+                -DGMX_PREFER_STATIC_LIBS=ON \
+                -DREGRESSIONTEST_DOWNLOAD=$regtest$ \
+                -DGMX_BUILD_MDRUN_ONLY=$mdrun$ \
+                -DGMX_DEFAULT_SUFFIX=OFF \
+                -DGMX_BINARY_SUFFIX=$bin_suffix$ \
+                -DGMX_LIBS_SUFFIX=$libs_suffix$ \
+                "
 
     # list of wrapper binaries
     wrappers = []
@@ -175,20 +177,19 @@ class GromacsRecipes(BuildRecipes):
         self.__generate()
 
     def __initiate_build_stage(self):
-        # Add common build stage
+        '''
+        Initiate Build Stage by Calling the super
+        '''
         BuildRecipes._BuildRecipes__initiate_build_stage(self)
-
-        # iterate through each GrROMACS engine options to modify cmake_opts
-        # TODO: Download GROMACS only once...
 
         engine_cmake_opts = self.__get_cmake_opts()
         for engine in self.cli.gromacs_engines:
-            # binary and library suffix
+            # binary and library suffix for gmx
             bin_libs_suffix = self.__get_bin_libs_suffix(engine['rdtscp'])
             cmake_opts = engine_cmake_opts.replace('$bin_suffix$', bin_libs_suffix)
             cmake_opts = cmake_opts.replace('$libs_suffix$', bin_libs_suffix)
 
-            # wrapper suffix
+            # wrapper binary ... appropriate suffix will be added later
             self.wrappers.append('mdrun') if engine['mdrun'].lower() == 'on' else self.wrappers.append('gmx')
 
             # simd, rdtscp, mdrun
@@ -240,6 +241,9 @@ class GromacsRecipes(BuildRecipes):
         self.wrappers = [wrapper + wrapper_suffix for wrapper in set(self.wrappers)]
 
     def __deployment_stage(self, *, build_stage):
+        '''
+        Deployment stage.
+        '''
         self.stages['deploy'] = hpccm.Stage()
         self.stages['deploy'] += hpccm.primitives.baseimage(image=self.base_image)
         self.stages['deploy'] += hpccm.building_blocks.packages(ospackages=self.os_packages)
@@ -272,15 +276,27 @@ class GromacsRecipes(BuildRecipes):
         self.stages['deploy'] += hpccm.primitives.label(metadata={'gromacs.version': self.cli.args.gromacs})
 
     def __get_wrapper_suffix(self):
+        '''
+        Set the wrapper suffix based on mpi enabled/disabled and
+        double precision enabled and disabled
+        '''
         return config.WRAPPER_SUFFIX_FORMAT.format(mpi=config.GMX_ENGINE_SUFFIX_OPTIONS['mpi'] if self.cli.args.openmpi or self.cli.args.impi else '',
                                                    double=config.GMX_ENGINE_SUFFIX_OPTIONS['double'] if self.cli.args.double else '')
 
     def __get_bin_libs_suffix(self, rdtscp):
+        '''
+        Set tgmx binaries and library suffix based on mpi enabled/disabled,
+        double precision enabled and disabled and
+        rdtscp enabled/disabled
+        '''
         return config.BINARY_SUFFIX_FORMAT.format(mpi=config.GMX_ENGINE_SUFFIX_OPTIONS['mpi'] if self.cli.args.openmpi or self.cli.args.impi else '',
                                                   double=config.GMX_ENGINE_SUFFIX_OPTIONS['double'] if self.cli.args.double else '',
                                                   rdtscp=config.GMX_ENGINE_SUFFIX_OPTIONS['rdtscp'] if rdtscp.lower() == 'on' else '')
 
     def __get_cmake_opts(self):
+        '''
+        Configure the cmake_opts, this will be used by hpccm generic_cmake building blocks
+        '''
         engine_cmake_opts = self.cmake_opts[:]
         # Compiler and mpi
         if self.cli.args.openmpi or self.cli.args.impi:
@@ -291,13 +307,11 @@ class GromacsRecipes(BuildRecipes):
             # setting for regtest
             if self.cli.args.regtest:
                 # TODO: missing mpiexec ??????????
-                # regtest_mpi_cmake_variables = "-DMPIEXEC=mpiexec \
+                # regtest_mpi_cmake_variables = " -DMPIEXEC_EXECUTABLE=mpiexec \
                 # -DMPIEXEC_NUMPROC_FLAG=-np \
                 # -DMPIEXEC_PREFLAGS='--allow-run-as-root;--oversubscribe' \
                 # -DMPIEXEC_POSTFLAGS= "
-                regtest_mpi_cmake_variables = " -DMPIEXEC_NUMPROC_FLAG=-np \
-                        -DMPIEXEC_PREFLAGS='--allow-run-as-root;--oversubscribe'\
-                        -DMPIEXEC_POSTFLAGS="
+                regtest_mpi_cmake_variables = " -DMPIEXEC_PREFLAGS='--allow-run-as-root;--oversubscribe'"
                 engine_cmake_opts = engine_cmake_opts + regtest_mpi_cmake_variables
 
         else:
@@ -322,6 +336,9 @@ class GromacsRecipes(BuildRecipes):
         return engine_cmake_opts
 
     def __generate(self):
+        '''
+        Generate the container (Docker or Singularity) specification file
+        '''
         hpccm.config.set_container_format(self.cli.args.format)
         print(self.stages['build'])
         print(self.stages['deploy'])
