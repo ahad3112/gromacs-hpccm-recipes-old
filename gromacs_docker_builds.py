@@ -21,7 +21,8 @@ if __name__ == '__main__':
         try:
             previous_stage = getattr(recipes, stage)(args=args, previous_stage=previous_stage)
         except AttributeError as error:
-            print(error)
+            # print(error)
+            pass
 
     # GromacsRecipes(cli=cli)
 

@@ -5,6 +5,7 @@ Author :
 
 from __future__ import print_function
 import os
+import sys
 from distutils.version import StrictVersion
 
 import hpccm
@@ -13,6 +14,10 @@ import config
 
 
 class StageMixin:
+    '''This is a Mixin class contains common features of DevelopmentStage, ApplicationStage and
+    DeploymentStage. such as, _initiate_stage, _runtime, _cook methods
+    '''
+
     def __init__(self, *, args, previous_stage):
         self.args = args
         # print(self.__class /__.__name__, args, previous_stage.__class__.__name__)
@@ -28,7 +33,8 @@ class StageMixin:
             try:
                 method = getattr(self, arg)
             except AttributeError as error:
-                print(error)
+                pass
+                # print(error)
             else:
                 method(self.args[arg])
 
@@ -41,10 +47,23 @@ class StageMixin:
     def _cook(self):
         print(self.stage)
 
+    @staticmethod
+    def version_checked(tool, required, given):
+        if StrictVersion(given) < StrictVersion(required):
+            raise RuntimeError('Invalid {tool} version: {given}. Minimum required version: {required}.'.format(
+                tool=tool,
+                given=given,
+                required=required
+            ))
+        return True
+
 
 class DevelopmentStage(StageMixin):
     def gcc(self, version):
-        print('Implementing GCC')
+        self.compiler = hpccm.building_blocks.gnu(extra_repository=True,
+                                                  fortran=False,
+                                                  version=version)
+        self.stage += self.compiler
 
 
 class ApplicationStage(StageMixin):
@@ -160,7 +179,6 @@ class BuildRecipes:
                 given=given,
                 required=required
             ))
-
         return True
 
 
