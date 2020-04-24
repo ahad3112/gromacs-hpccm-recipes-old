@@ -62,6 +62,9 @@ class StageMixin:
         self._cook()
 
     def _runtime(self):
+        '''
+        Return the runtime for this stage
+        '''
         return self.stage.runtime()
 
     def _cook(self):
@@ -69,6 +72,9 @@ class StageMixin:
 
     @staticmethod
     def version_checked(tool, required, given):
+        '''
+        Static method to check the software verion
+        '''
         if StrictVersion(given) < StrictVersion(required):
             raise RuntimeError('{tool} version not fulfilled: {given}. Minimum required version: {required}.'.format(
                 tool=tool,
@@ -96,6 +102,9 @@ class DevelopmentStage(StageMixin):
             self.stage += hpccm.building_blocks.cmake(eula=True, version=version)
 
     def ubuntu(self, version):
+        '''
+        Choose base image based on Linux ubuntu distribution
+        '''
         if self.cuda_enabled:
             # base image will be created in method cuda
             return
@@ -105,6 +114,9 @@ class DevelopmentStage(StageMixin):
                 self.stage += self.previous_stage._runtime()
 
     def centos(self, version):
+        '''
+        Choose base image based on Linux centos distribution
+        '''
         if self.cuda_enabled:
             # base image will be created in method cuda
             return
@@ -114,6 +126,9 @@ class DevelopmentStage(StageMixin):
                 self.stage += self.previous_stage._runtime()
 
     def cuda(self, version):
+        '''
+        Choose base image from nvidia
+        '''
         raise RuntimeError('Cuda not supported yet...')
 
 
