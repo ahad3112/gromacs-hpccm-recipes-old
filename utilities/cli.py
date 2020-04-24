@@ -9,9 +9,8 @@ import collections
 import config
 
 
-# need to specify the ordering of tools
+# Specifying the ordering of the tools
 # double and regtest don't need any ordering, as these does not corresponds to any method
-# in classes in recipes module
 tools_order = [
     'ubuntu',
     'centos',

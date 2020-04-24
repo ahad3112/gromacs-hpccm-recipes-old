@@ -16,7 +16,7 @@ from utilities.cli import tools_order
 
 class StageMixin:
     '''This is a Mixin class contains common features of DevelopmentStage, ApplicationStage and
-    DeploymentStage. such as, _initiate_stage, _runtime, _cook methods
+    DeploymentStage. such as, _prepare, _build, _runtime, _cook methods
     '''
 
     def __init__(self, *, args, previous_stage):
