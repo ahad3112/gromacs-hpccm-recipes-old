@@ -11,6 +11,7 @@ from distutils.version import StrictVersion
 import hpccm
 
 import config
+from utilities.cli import tools_order
 
 
 class StageMixin:
@@ -20,25 +21,44 @@ class StageMixin:
 
     def __init__(self, *, args, previous_stage):
         self.args = args
-        # print(self.__class /__.__name__, args, previous_stage.__class__.__name__)
-        self._initiate_stage(previous_stage=previous_stage)
+        self.previous_stage = previous_stage
+        self._build(previous_stage=previous_stage)
 
-    def _initiate_stage(self, *, previous_stage):
+    def _prepare(self):
+        '''
+        We need to keep track of precision and cuda for, that will be used in build some other tools.
+        Such as fftw, gromacs etc.:
+            * double : need to delete it from the args, as there will be no method for double
+            * cuda   : Will not delete it as we will add cuda method later
+        '''
+        self.double = self.args.get('double', False)
+        try:
+            del self.args['double']
+        except KeyError:
+            pass
+
+        self.cuda_enabled = True if self.args.get('cuda', None) else False
+
+    def _build(self, *, previous_stage):
+        '''
+        This method perform the preparation for the recipes and
+        Then generate the recipes and finally cook the recipes
+        '''
+        self._prepare()
+
         self.stage = hpccm.Stage()
-        if previous_stage:
-            self.stage += previous_stage._runtime()
 
-        # Now iterate through each arg in args
-        for arg in self.args:
-            try:
-                method = getattr(self, arg)
-            except AttributeError as error:
-                pass
-                # print(error)
-            else:
-                method(self.args[arg])
+        for tool in tools_order:
+            if tool in self.args:
+                try:
+                    method = getattr(self, tool)
+                except AttributeError as error:
+                    pass
+                    # print(error)
+                else:
+                    method(self.args[tool])
 
-        # Recipe has been created. Now it is time to cook .....
+        # Recipe has been prepared. Now, it is time to cook .....
         self._cook()
 
     def _runtime(self):
@@ -50,7 +70,7 @@ class StageMixin:
     @staticmethod
     def version_checked(tool, required, given):
         if StrictVersion(given) < StrictVersion(required):
-            raise RuntimeError('Invalid {tool} version: {given}. Minimum required version: {required}.'.format(
+            raise RuntimeError('{tool} version not fulfilled: {given}. Minimum required version: {required}.'.format(
                 tool=tool,
                 given=given,
                 required=required
@@ -60,10 +80,41 @@ class StageMixin:
 
 class DevelopmentStage(StageMixin):
     def gcc(self, version):
+        '''
+        gcc compiler
+        '''
         self.compiler = hpccm.building_blocks.gnu(extra_repository=True,
                                                   fortran=False,
                                                   version=version)
         self.stage += self.compiler
+
+    def cmake(self, version):
+        '''
+        cmake : need to check minimum version requirement
+        '''
+        if StageMixin.version_checked('CMake', config.CMAKE_MIN_REQUIRED_VERSION, version):
+            self.stage += hpccm.building_blocks.cmake(eula=True, version=version)
+
+    def ubuntu(self, version):
+        if self.cuda_enabled:
+            # base image will be created in method cuda
+            return
+        else:
+            self.stage += hpccm.primitives.baseimage(image='ubuntu:' + version, _as='dev_stage')
+            if self.previous_stage:
+                self.stage += self.previous_stage._runtime()
+
+    def centos(self, version):
+        if self.cuda_enabled:
+            # base image will be created in method cuda
+            return
+        else:
+            self.stage += hpccm.primitives.baseimage(image='centos:centos' + version, _as='dev_stage')
+            if self.previous_stage:
+                self.stage += self.previous_stage._runtime()
+
+    def cuda(self, version):
+        raise RuntimeError('Cuda not supported yet...')
 
 
 class ApplicationStage(StageMixin):

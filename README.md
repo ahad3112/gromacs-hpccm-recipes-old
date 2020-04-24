@@ -6,9 +6,9 @@ HPCCM recipes for GROMACS build and installation
     $ ./gromacs_docker_builds.py -h/--help
 
 ## Building Image
-##### Sample Command
-
-    /gromacs_docker_builds.py --format docker --ubuntu 18.04 --engines simd=sse2:rdtscp=off:mdrun=off simd=avx2:rdtscp=on:mdrun=on simd=avx2:rdtscp=off:mdrun=on  --gromacs 2020.1> Dockerfile
+##### Sample Commands
+    ./gromacs_docker_builds.py --gromacs 2020.1 --ubuntu 18.04 --gcc 9 --cmake 3.17.1 --engines simd=sse2:rdtscp=off simd=sse2:rdtscp=on  --openmpi 3.0.0 --regtest --fftw 3.3.7 --cuda 6 --double > Dockerfile
+    ./gromacs_docker_builds.py --format docker --ubuntu 18.04 --engines simd=sse2:rdtscp=off:mdrun=off simd=avx2:rdtscp=on:mdrun=on simd=avx2:rdtscp=off:mdrun=on  --gromacs 2020.1> Dockerfile
 
 
 ## Running Image
